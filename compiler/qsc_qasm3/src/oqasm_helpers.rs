@@ -50,6 +50,7 @@ pub(crate) fn safe_u128_to_f64(value: u128) -> Option<f64> {
     }
 }
 
+/// `i64` is 64 bits wide, but `f64`'s mantissa is only 52 bits wide
 pub(crate) fn safe_i64_to_f64(value: i64) -> Option<f64> {
     #[allow(clippy::cast_possible_truncation)]
     if value <= f64::MAX as i64 {

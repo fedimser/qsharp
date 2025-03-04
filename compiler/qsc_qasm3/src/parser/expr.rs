@@ -1,9 +1,6 @@
 // Copyright (c) Microsoft Corporation.
 // Licensed under the MIT License.
 
-// while we work through the conversion, allow dead code to avoid warnings
-#![allow(dead_code)]
-
 //! Expression parsing makes use of Pratt parsing (or “top-down operator-precedence parsing”) to handle
 //! relative precedence of operators.
 
@@ -280,11 +277,15 @@ fn lit_token(lexeme: &str, token: Token) -> Result<Option<Lit>> {
             }
             Literal::Bitstring => {
                 let lexeme = shorten(1, 1, lexeme);
-                let width = lexeme
-                    .to_string()
-                    .chars()
-                    .filter(|c| *c == '0' || *c == '1')
-                    .count();
+                let width = u32::try_from(
+                    lexeme
+                        .to_string()
+                        .chars()
+                        .filter(|c| *c == '0' || *c == '1')
+                        .count(),
+                )
+                .map_err(|_| Error::new(ErrorKind::Lit("bitstring", token.span)))?;
+
                 // parse it to validate the bitstring
                 let value = BigInt::from_str_radix(lexeme, 2)
                     .map_err(|_| Error::new(ErrorKind::Lit("bitstring", token.span)))?;
@@ -429,7 +430,7 @@ fn timing_literal(lexeme: &str, token: Token, kind: TimingLiteralKind) -> Result
 
     Ok(Some(Lit {
         span: token.span,
-        kind: LiteralKind::Duration { value, unit },
+        kind: LiteralKind::Duration(value, unit),
     }))
 }
 

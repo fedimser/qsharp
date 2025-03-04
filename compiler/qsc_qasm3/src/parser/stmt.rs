@@ -541,7 +541,7 @@ fn parse_non_constant_classical_decl(
     recovering_semi(s);
     let decl = ClassicalDeclarationStmt {
         span: s.span(lo),
-        r#type: ty,
+        ty,
         identifier,
         init_expr,
     };
@@ -559,7 +559,7 @@ fn parse_constant_classical_decl(s: &mut ParserContext) -> Result<StmtKind> {
     recovering_semi(s);
     let decl = ConstantDeclStmt {
         span: s.span(lo),
-        r#type: ty,
+        ty,
         identifier,
         init_expr,
     };
@@ -654,7 +654,7 @@ fn creg_decl(s: &mut ParserContext) -> Result<StmtKind> {
     recovering_semi(s);
     Ok(StmtKind::ClassicalDecl(ClassicalDeclarationStmt {
         span: s.span(lo),
-        r#type: TypeDef::Scalar(ScalarType {
+        ty: TypeDef::Scalar(ScalarType {
             span: s.span(lo),
             kind: ScalarTypeKind::Bit(BitType {
                 size,

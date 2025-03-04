@@ -10,6 +10,8 @@ use std::{
     rc::Rc,
 };
 
+use crate::semantic::symbols::SymbolId;
+
 fn set_indentation<'a, 'b>(
     indent: Indented<'a, Formatter<'b>>,
     level: usize,
@@ -37,7 +39,6 @@ pub(crate) fn list_from_iter<T>(vals: impl IntoIterator<Item = T>) -> List<T> {
 
 #[derive(Clone, Debug)]
 pub struct Program {
-    pub span: Span,
     pub statements: List<Stmt>,
     pub version: Option<Version>,
 }
@@ -45,7 +46,6 @@ pub struct Program {
 impl Display for Program {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut indent = set_indentation(indented(f), 0);
-        write!(indent, "Program {}:", self.span)?;
         indent = set_indentation(indent, 1);
         if let Some(version) = &self.version {
             write!(indent, "\nVersion {version}")?;
@@ -336,7 +336,7 @@ impl Display for HardwareQubit {
 
 #[derive(Clone, Debug)]
 pub struct AliasDeclStmt {
-    pub ident: Identifier,
+    pub symbol_id: SymbolId,
     pub exprs: List<Expr>,
     pub span: Span,
 }
@@ -344,21 +344,12 @@ pub struct AliasDeclStmt {
 impl Display for AliasDeclStmt {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         let mut indent = set_indentation(indented(f), 0);
-        write!(indent, "Alias {}: {}", self.span, self.ident)?;
+        write!(indent, "Alias {}: {}", self.span, self.symbol_id)?;
         indent = set_indentation(indent, 1);
         for expr in &*self.exprs {
             write!(indent, "\n{expr}")?;
         }
         Ok(())
-    }
-}
-
-impl AliasDeclStmt {
-    fn get_name(&self) -> &str {
-        match &self.ident {
-            Identifier::Ident(ident) => ident.name.as_ref(),
-            Identifier::IndexedIdent(ident) => ident.name.name.as_ref(),
-        }
     }
 }
 
@@ -406,7 +397,6 @@ pub enum StmtKind {
     Cal(CalibrationStmt),
     CalibrationGrammar(CalibrationGrammarStmt),
     ClassicalDecl(ClassicalDeclarationStmt),
-    ConstDecl(ConstantDeclStmt),
     Continue(ContinueStmt),
     Def(DefStmt),
     DefCal(DefCalStmt),
@@ -449,7 +439,6 @@ impl Display for StmtKind {
             StmtKind::Cal(cal) => write!(f, "{cal}"),
             StmtKind::CalibrationGrammar(grammar) => write!(f, "{grammar}"),
             StmtKind::ClassicalDecl(decl) => write!(f, "{decl}"),
-            StmtKind::ConstDecl(decl) => write!(f, "{decl}"),
             StmtKind::Continue(continue_stmt) => write!(f, "{continue_stmt}"),
             StmtKind::Def(def) => write!(f, "{def}"),
             StmtKind::DefCal(defcal) => write!(f, "{defcal}"),
@@ -655,6 +644,7 @@ impl Display for ExprStmt {
 pub struct Expr {
     pub span: Span,
     pub kind: Box<ExprKind>,
+    pub ty: super::types::Type,
 }
 
 impl WithSpan for Expr {
@@ -665,7 +655,11 @@ impl WithSpan for Expr {
 
 impl Display for Expr {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Expr {}: {}", self.span, self.kind)
+        write!(
+            f,
+            "Expr {}: [Kind: {}, Ty: {}]",
+            self.span, self.kind, self.ty
+        )
     }
 }
 
@@ -1305,26 +1299,17 @@ impl Display for MeasureStmt {
 #[derive(Clone, Debug)]
 pub struct ClassicalDeclarationStmt {
     pub span: Span,
-    pub ty: TypeDef,
-    pub identifier: Box<Ident>,
-    pub init_expr: Option<Box<ValueExpression>>,
+    pub symbol_id: SymbolId,
+    pub init_expr: Box<ValueExpression>,
 }
 
 impl Display for ClassicalDeclarationStmt {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        if let Some(init_expr) = &self.init_expr {
-            write!(
-                f,
-                "ClassicalDeclarationStmt {}: {}, {}, {}",
-                self.span, self.ty, self.identifier, init_expr
-            )
-        } else {
-            write!(
-                f,
-                "ClassicalDeclarationStmt {}: {}, {}",
-                self.span, self.ty, self.identifier
-            )
-        }
+        write!(
+            f,
+            "ClassicalDeclarationStmt {}: {}, {}",
+            self.span, self.symbol_id, self.init_expr
+        )
     }
 }
 
@@ -1357,24 +1342,6 @@ impl Display for IODeclaration {
             f,
             "IODeclaration {}: {}, {}, {}",
             self.span, self.io_identifier, self.r#type, self.ident
-        )
-    }
-}
-
-#[derive(Clone, Debug)]
-pub struct ConstantDeclStmt {
-    pub span: Span,
-    pub ty: TypeDef,
-    pub identifier: Box<Ident>,
-    pub init_expr: Expr,
-}
-
-impl Display for ConstantDeclStmt {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "ConstantDeclaration {}: {}, {}, {}",
-            self.span, self.ty, self.identifier, self.init_expr
         )
     }
 }
@@ -1613,7 +1580,7 @@ pub enum ExprKind {
     /// An expression with invalid syntax that can't be parsed.
     #[default]
     Err,
-    Ident(Ident),
+    Ident(SymbolId),
     UnaryOp(UnaryOpExpr),
     BinaryOp(BinaryOpExpr),
     Lit(Lit),
@@ -1718,14 +1685,8 @@ impl Display for FunctionCall {
 #[derive(Clone, Debug)]
 pub struct Cast {
     pub span: Span,
-    pub r#type: TypeDef,
-    pub arg: Expr,
-}
-
-impl Display for Cast {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "Cast {}: {}, {}", self.span, self.r#type, self.arg)
-    }
+    pub ty: crate::semantic::types::Type,
+    pub expr: Expr,
 }
 
 #[derive(Clone, Debug)]
@@ -1762,9 +1723,9 @@ pub enum LiteralKind {
     Array(List<Expr>),
     Bitstring(BigInt, u32),
     Bool(bool),
-    Duration(f64, TimeUnit),
+    Duration { value: f64, unit: TimeUnit },
     Float(f64),
-    Imaginary(f64),
+    Complex(f64, f64),
     Int(i64),
     BigInt(BigInt),
     String(Rc<str>),
@@ -1787,11 +1748,11 @@ impl Display for LiteralKind {
                 write!(f, "Bitstring(\"{:0>width$}\")", value.to_str_radix(2))
             }
             LiteralKind::Bool(b) => write!(f, "Bool({b:?})"),
-            LiteralKind::Duration(value, unit) => {
+            LiteralKind::Duration { value, unit } => {
                 write!(f, "Duration({value:?}, {unit:?})")
             }
             LiteralKind::Float(value) => write!(f, "Float({value:?})"),
-            LiteralKind::Imaginary(value) => write!(f, "Imaginary({value:?})"),
+            LiteralKind::Complex(real, img) => write!(f, "Complex({real:?}, {img:?})"),
             LiteralKind::Int(i) => write!(f, "Int({i:?})"),
             LiteralKind::BigInt(i) => write!(f, "BigInt({i:?})"),
             LiteralKind::String(s) => write!(f, "String({s:?})"),
@@ -1979,11 +1940,12 @@ fn display_paren(mut indent: Indented<Formatter>, expr: &Expr) -> fmt::Result {
     write!(indent, "\n{expr}")?;
     Ok(())
 }
+
 fn display_cast(mut indent: Indented<Formatter>, cast: &Cast) -> fmt::Result {
-    let Cast { span, r#type, arg } = cast;
+    let Cast { span, ty, expr } = cast;
     write!(indent, "Cast {span}:")?;
     indent = set_indentation(indent, 1);
-    write!(indent, "\n{type}\n{arg}")?;
+    write!(indent, "\nTarget Ty: {ty}\nSource Expr: {expr}")?;
     Ok(())
 }
 

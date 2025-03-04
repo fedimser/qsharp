@@ -98,7 +98,7 @@ impl Complex {
 }
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) enum Type {
     Bool(bool),
     BigInt(bool),
@@ -117,7 +117,9 @@ pub(crate) enum Type {
     ResultArray(ArrayDimensions, bool),
     TupleArray(ArrayDimensions, Vec<Type>),
     /// Function or operation, with the number of classical parameters and qubits.
-    Callable(CallableKind, usize, usize),
+    Callable(CallableKind, u32, u32),
+    #[default]
+    Err,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,6 +154,23 @@ impl From<&ArrayDims> for ArrayDimensions {
             ArrayDims::D1(dim) => ArrayDimensions::One(*dim),
             ArrayDims::D2(dim1, dim2) => ArrayDimensions::Two(*dim1, *dim2),
             ArrayDims::D3(dim1, dim2, dim3) => ArrayDimensions::Three(*dim1, *dim2, *dim3),
+        }
+    }
+}
+
+impl From<&crate::semantic::types::ArrayDimensions> for ArrayDimensions {
+    fn from(value: &crate::semantic::types::ArrayDimensions) -> Self {
+        match value {
+            crate::semantic::types::ArrayDimensions::One(dim) => {
+                ArrayDimensions::One(*dim as usize)
+            }
+            crate::semantic::types::ArrayDimensions::Two(dim1, dim2) => {
+                ArrayDimensions::Two(*dim1 as usize, *dim2 as usize)
+            }
+            crate::semantic::types::ArrayDimensions::Three(dim1, dim2, dim3) => {
+                ArrayDimensions::Three(*dim1 as usize, *dim2 as usize, *dim3 as usize)
+            }
+            _ => unimplemented!("Array dimensions greater than three are not supported."),
         }
     }
 }
@@ -196,6 +215,7 @@ impl Display for Type {
             Type::Callable(kind, num_classical, num_qubits) => {
                 write!(f, "Callable({kind}, {num_classical}, {num_qubits})")
             }
+            Type::Err => write!(f, "Err"),
         }
     }
 }
